@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include "keyboard.h"
 #include "xhci.h"
+#include "../poll.h"
 
 #define PS2_DATA_PORT   0x60
 #define PS2_STATUS_PORT 0x64
@@ -117,6 +118,8 @@ char kb_getc(void) {
 
         int uc = xhci_poll_key();
         if (uc >= 0) return (char)uc;
+
+        poll_run();
 
         asm volatile ("pause");
     }

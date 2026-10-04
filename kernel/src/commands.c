@@ -4,6 +4,9 @@
 #include "tar.h"
 #include "fs.h"
 #include "drivers/keyboard.h"
+#include "system/sysinfo.h"
+#include "helpers.h"
+#include "fb.h"
 
 #define EDIT_MAX_SIZE 8192
 static char edit_buf[EDIT_MAX_SIZE];
@@ -15,18 +18,6 @@ extern volatile struct limine_module_request module_request;
 
 // Tracks the current directory, e.g. "" for root, "docs" if you cd into docs.
 static char cwd[128] = "";
-
-static int streq(const char *a, const char *b)
-{
-    while (*a && *b)
-    {
-        if (*a != *b)
-            return 0;
-        a++;
-        b++;
-    }
-    return *a == *b;
-}
 
 static const void *get_archive(void)
 {
@@ -70,24 +61,43 @@ static void resolve_path(char *out, size_t out_size, const char *name)
     }
 }
 
-void cmd_help(void)
+void cmd_help(const char *args)
 {
+    (void)args;
+
     serial_print("Available commands:\n");
-    serial_print("  help  - show this message\n");
-    serial_print("  echo  - print the rest of the line\n");
-    serial_print("  clear - clear the screen\n");
-    serial_print("  ls    - list files in current directory\n");
-    serial_print("  cat   - print a file's contents\n");
-    serial_print("  cd    - change directory\n");
-    serial_print("  pwd   - print current directory\n");
-    serial_print("  sync  - save filesystem changes to disk\n");
-    serial_print("  edit  - edit a file (Ctrl+K to save)\n");
+    serial_print("  help             - show this message\n");
+    serial_print("  echo  <string>   - print the rest of the line\n");
+    serial_print("  fart  <string>   - echo, but fart\n");
+    serial_print("  clear            - clear the screen\n");
+    serial_print("  sysinfo -arg[ram, cpu, os] - list system info\n");
+    serial_print("  ls               - list files in current directory\n");
+    serial_print("  mkdir <dir_name> - list files in current directory\n");
+    serial_print("  mfile <file_name - list files in current directory\n");
+    serial_print("  rm    <file/dir> - list files in current directory\n");
+    serial_print("  cat   <file_name - print a file's contents\n");
+    serial_print("  cd    <dir>      - change directory\n");
+    serial_print("  pwd              - print current directory\n");
+    serial_print("  sync             - save filesystem changes to disk\n");
+    serial_print("  edit  <file>     - edit an existing file (Ctrl+K to save)\n");
+    serial_print("  write <file>     - list files in current directory\n");
 }
 
 void cmd_echo(const char *args)
 {
     serial_print(args);
     serial_print("\n");
+}
+
+void cmd_fart(const char *args)
+{
+    serial_print(args);
+    serial_print("\n");
+}
+
+void cmd_sysinfo(const char *args)
+{
+    print_sysinfo(args);
 }
 
 static void ls_callback(const char *name, size_t size)
@@ -138,15 +148,32 @@ static void ls_callback(const char *name, size_t size)
     serial_print("\n");
 }
 
-void cmd_ls(void)
+void cmd_ls(const char *args)
 {
+    (void)args;
+
     const void *archive = get_archive();
+
     if (archive == NULL)
     {
         serial_print("No filesystem loaded.\n");
         return;
     }
+
     tar_list(archive, ls_callback);
+}
+
+void cmd_therapist(const char *args)
+{
+    serial_print("I hear ");
+    serial_print(args);
+    serial_print(" is important to you. What about your other files?");
+}
+
+void cmd_clear(const char *args)
+{
+    (void)args;
+    serial_clear();
 }
 
 void cmd_cat(const char *filename)
@@ -184,8 +211,10 @@ void cmd_cat(const char *filename)
     serial_print("\n");
 }
 
-void cmd_pwd(void)
+void cmd_pwd(const char *args)
 {
+    (void)args;
+
     serial_print("/");
     serial_print(cwd);
     serial_print("\n");
@@ -353,8 +382,10 @@ void cmd_write(const char *args)
     }
 }
 
-void cmd_sync(void)
+void cmd_sync(const char *args)
 {
+    (void)args;
+
     /*if (fs_sync()) {
         serial_print("Filesystem synced to disk.\n");
     } else {
@@ -376,24 +407,6 @@ static size_t edit_line_end(size_t pos, size_t len)
     while (i < len && edit_buf[i] != '\n')
         i++;
     return i;
-}
-
-void serial_print_uint(unsigned int value)
-{
-    char digits[10];
-    int n = 0;
-    if (value == 0)
-    {
-        serial_putc('0');
-        return;
-    }
-    while (value > 0 && n < 10)
-    {
-        digits[n++] = '0' + (value % 10);
-        value /= 10;
-    }
-    while (n > 0)
-        serial_putc(digits[--n]);
 }
 
 // Positions the real terminal cursor to match `cursor`'s spot in the buffer.
@@ -544,7 +557,7 @@ void cmd_edit(const char *filename)
                 else
                 {
                     serial_print("Saved.\n");
-                    cmd_sync();
+                    cmd_sync("pass");
                 }
                 return;
             }
@@ -592,6 +605,7 @@ void cmd_edit(const char *filename)
 }
 
 void kb_readline(char *buf, int max_len)
+
 {
     int i = 0;
 
@@ -629,4 +643,47 @@ void kb_readline(char *buf, int max_len)
             serial_putc(c);
         }
     }
+}
+
+typedef void (*command_func_t)(const char *args);
+
+typedef struct
+{
+    const char *name;
+    command_func_t func;
+} command_t;
+
+static const command_t commands[] = {
+    {"help", cmd_help},
+    {"echo", cmd_echo},
+    {"fart", cmd_fart},
+    {"clear", cmd_clear},
+    {"ls", cmd_ls},
+    {"cat", cmd_cat},
+    {"pwd", cmd_pwd},
+    {"cd", cmd_cd},
+    {"mkdir", cmd_mkdir},
+    {"mkfile", cmd_mkfile},
+    {"rm", cmd_rm},
+    {"write", cmd_write},
+    {"sync", cmd_sync},
+    {"edit", cmd_edit},
+    {"sysinfo", cmd_sysinfo},
+    {"therapist", cmd_therapist},
+};
+
+void cmd_execute(const char *name, const char *args)
+{
+    for (size_t i = 0; i < sizeof(commands) / sizeof(commands[0]); i++)
+    {
+        if (streq(name, commands[i].name))
+        {
+            commands[i].func(args);
+            return;
+        }
+    }
+
+    serial_print("Command not found: ");
+    serial_print(name);
+    serial_print("\n");
 }

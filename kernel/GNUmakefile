@@ -7,6 +7,7 @@ override OUTPUT := kernel
 
 # Install prefix; /usr/local is a good, standard default pick.
 PREFIX := /usr/local
+HOST_CC ?= cc
 
 # User controllable toolchain and toolchain prefix.
 TOOLCHAIN :=
@@ -122,6 +123,33 @@ override HEADER_DEPS := $(addprefix obj/,$(CFILES:.c=.c.d) $(ASFILES:.S=.S.d))
 .PHONY: all
 all: bin/$(OUTPUT)
 
+.PHONY: test-firmware test-iwl-firmware test-iwl-transport test-heap
+test-firmware: test-iwl-firmware test-iwl-transport test-heap
+	mkdir -p bin
+	$(HOST_CC) -std=c11 -Wall -Wextra -I src \
+		tests/rtl8168_firmware_test.c src/drivers/rtl8168_firmware.c \
+		-o bin/rtl8168_firmware_test
+	./bin/rtl8168_firmware_test firmware/rtl8168h-2.fw
+
+test-iwl-firmware:
+	mkdir -p bin
+	$(HOST_CC) -std=c11 -Wall -Wextra -I src \
+		tests/iwl_firmware_test.c src/drivers/wifi/iwl_firmware.c \
+		-o bin/iwl_firmware_test
+	./bin/iwl_firmware_test firmware/iwlwifi-QuZ-a0-hr-b0-77.ucode
+
+test-iwl-transport:
+	mkdir -p bin
+	$(HOST_CC) -std=c11 -Wall -Wextra -I src \
+		tests/iwl_transport_test.c -o bin/iwl_transport_test
+	./bin/iwl_transport_test
+
+test-heap:
+	mkdir -p bin
+	$(HOST_CC) -std=c11 -Wall -Wextra -I src \
+		tests/heap_test.c src/heap.c -o bin/heap_test
+	./bin/heap_test
+
 # Include header dependencies.
 -include $(HEADER_DEPS)
 
@@ -139,6 +167,10 @@ obj/%.c.o: %.c GNUmakefile
 obj/%.S.o: %.S GNUmakefile
 	mkdir -p "$(dir $@)"
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
+
+# The assembly source embeds this vendor firmware directly in the kernel.
+obj/src/drivers/rtl8168_firmware_blob.S.o: firmware/rtl8168h-2.fw
+obj/src/drivers/wifi/iwlwifi_firmware_blob.S.o: firmware/iwlwifi-QuZ-a0-hr-b0-77.ucode
 
 # Compilation rules for *.asm (nasm) files.
 obj/%.asm.o: %.asm GNUmakefile

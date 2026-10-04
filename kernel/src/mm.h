@@ -25,6 +25,14 @@ void *phys_to_virt(uint64_t phys);
 // device (xHCI rings/contexts) for a buffer your kernel owns.
 uint64_t virt_to_phys(const void *virt);
 
+// Diagnostic translations used to verify DMA addresses on real hardware.
+// The page-table version returns UINT64_MAX when `virt` is not mapped.
+uint64_t mm_virt_to_phys_linear(const void *virt);
+uint64_t mm_virt_to_phys_page_table(const void *virt);
+uint64_t mm_hhdm_offset(void);
+uint64_t mm_kernel_phys_base(void);
+uint64_t mm_kernel_virt_base(void);
+
 // Maps `size` bytes starting at physical address `phys` into the page
 // tables (rounded out to whole pages), uncacheable, so it's safe to
 // dereference via phys_to_virt() afterward. Needed for any physical

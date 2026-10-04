@@ -1,4 +1,5 @@
 #include "heap.h"
+#include <stdint.h>
 
 // 16 MB static arena, reserved in the kernel's BSS section at compile time.
 #define HEAP_SIZE (16 * 1024 * 1024)
@@ -19,4 +20,22 @@ void *kalloc(size_t size)
     void *ptr = &heap_arena[heap_offset];
     heap_offset += aligned_size;
     return ptr;
+}
+
+void *kalloc_aligned(size_t size, size_t alignment)
+{
+    if (!alignment || (alignment & (alignment - 1u)) != 0)
+        return NULL;
+    uintptr_t base = (uintptr_t)heap_arena;
+    uintptr_t current = base + heap_offset;
+    uintptr_t aligned = (current + alignment - 1u) & ~(uintptr_t)(alignment - 1u);
+    if (aligned < current)
+        return NULL;
+    size_t start = (size_t)(aligned - base);
+    size_t aligned_size = (size + 7u) & ~(size_t)7u;
+    if (aligned_size < size || start > HEAP_SIZE ||
+        aligned_size > HEAP_SIZE - start)
+        return NULL;
+    heap_offset = start + aligned_size;
+    return (void *)aligned;
 }

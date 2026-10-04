@@ -826,6 +826,20 @@ int xhci_poll_key(void)
     return -1;
 }
 
+int xhci_key_down(uint8_t usage)
+{
+    if (!g_ready || usage == 0)
+        return 0;
+
+    for (int i = 2; i < 8; ++i)
+    {
+        if (g_report_buf[i] == usage)
+            return 1;
+    }
+
+    return 0;
+}
+
 // ---------------------------------------------------------------------
 // Bring-up
 // ---------------------------------------------------------------------

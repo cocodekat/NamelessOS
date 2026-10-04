@@ -44,6 +44,36 @@ run-video: $(IMAGE_NAME).iso storage.img
 		-device usb-kbd,bus=xhci.0 \
 		-serial stdio
 
+.PHONY: run-net
+run-net: $(IMAGE_NAME).iso storage.img
+	qemu-system-x86_64 \
+		-M q35 \
+		-m 2G \
+		-cdrom $(IMAGE_NAME).iso \
+		-boot d \
+		-drive id=storage,file=storage.img,format=raw,if=none \
+		-device piix3-ide,id=ide \
+		-device ide-hd,drive=storage,bus=ide.0,unit=0 \
+		-netdev user,id=net0 \
+		-device e1000,netdev=net0 \
+		-nographic
+
+.PHONY: run-video-net
+run-video-net: $(IMAGE_NAME).iso storage.img
+	qemu-system-x86_64 \
+		-M q35 \
+		-m 2G \
+		-cdrom $(IMAGE_NAME).iso \
+		-boot d \
+		-drive id=storage,file=storage.img,format=raw,if=none \
+		-device piix3-ide,id=ide \
+		-device ide-hd,drive=storage,bus=ide.0,unit=0 \
+		-device qemu-xhci,id=xhci \
+		-device usb-kbd,bus=xhci.0 \
+		-netdev user,id=net0 \
+		-device e1000,netdev=net0 \
+		-serial stdio
+
 .PHONY: run-uefi
 run-uefi: edk2-ovmf-bins $(IMAGE_NAME).iso storage.img
 	qemu-system-x86_64 \
@@ -104,6 +134,7 @@ $(IMAGE_NAME).iso: limine-binary/limine kernel
 	rm -rf iso_root
 	mkdir -p iso_root/boot
 	cp -v kernel/bin/kernel iso_root/boot/
+	cp -v kernel/firmware/LICENCE.iwlwifi_firmware iso_root/boot/
 	tar -cf initrd.tar -C files .
 	cp -v initrd.tar iso_root/boot/
 	mkdir -p iso_root/boot/limine
@@ -128,6 +159,7 @@ $(IMAGE_NAME).hdd: limine-binary/limine kernel
 	mcopy -i $(IMAGE_NAME).hdd@@1M initrd.tar ::/boot
 	mcopy -i $(IMAGE_NAME).hdd@@1M myfiles/test.txt ::/boot
 	mcopy -i $(IMAGE_NAME).hdd@@1M kernel/bin/kernel ::/boot
+	mcopy -i $(IMAGE_NAME).hdd@@1M kernel/firmware/LICENCE.iwlwifi_firmware ::/boot
 	mcopy -i $(IMAGE_NAME).hdd@@1M limine.conf limine-binary/limine-bios.sys ::/boot/limine
 	mcopy -i $(IMAGE_NAME).hdd@@1M limine-binary/BOOTX64.EFI ::/EFI/BOOT
 	mcopy -i $(IMAGE_NAME).hdd@@1M limine-binary/BOOTIA32.EFI ::/EFI/BOOT

@@ -1,6 +1,8 @@
 #ifndef XHCI_H
 #define XHCI_H
 
+#include <stdint.h>
+
 // Finds the xHCI controller over PCI, brings it up, and if a keyboard is
 // plugged into any root port, enumerates it as a HID boot-protocol
 // keyboard. Prints progress to serial as it goes -- if bring-up fails on
@@ -14,5 +16,9 @@ void xhci_init(void);
 // if nothing is available right now. Always returns -1 if xhci_init()
 // didn't find a working keyboard.
 int xhci_poll_key(void);
+
+// Returns non-zero while a USB HID usage is present in the keyboard's
+// current boot-protocol report. Games use this to detect held keys.
+int xhci_key_down(uint8_t usage);
 
 #endif

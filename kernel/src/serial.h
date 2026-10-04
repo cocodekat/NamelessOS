@@ -12,6 +12,10 @@ void serial_print(const char *s);
 void serial_print_hex32(uint32_t value);
 void serial_print_hex64(uint64_t value);
 
+void serial_print_uint(unsigned int value);
+
+void serial_print_dec64(uint64_t value);
+
 int serial_received(void);
 char serial_getc(void);
 void serial_readline(char *buf, int max_len);

@@ -1,4 +1,4 @@
-# NamelessOS
+# myOS
 
 myOS is an experimental x86_64 operating system built from scratch in C. It is a learning project for exploring boot protocols, memory mapping, hardware drivers, filesystems, and networking without building on an existing kernel such as Linux or BSD.
 

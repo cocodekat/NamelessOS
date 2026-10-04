@@ -17,6 +17,18 @@ static uint64_t hhdm_offset      = 0;
 static uint64_t kernel_phys_base = 0;
 static uint64_t kernel_virt_base = 0;
 
+#define PTE_PRESENT  (1ull << 0)
+#define PTE_WRITABLE (1ull << 1)
+#define PTE_PCD      (1ull << 4)  // cache disable -- required for MMIO correctness
+#define PTE_PS       (1ull << 7)
+#define PTE_ADDR_MASK 0x000FFFFFFFFFF000ull
+
+static inline uint64_t read_cr3(void) {
+    uint64_t v;
+    asm volatile ("mov %%cr3, %0" : "=r"(v));
+    return v;
+}
+
 void mm_init(void) {
     if (hhdm_request.response != NULL) {
         hhdm_offset = hhdm_request.response->offset;
@@ -31,20 +43,48 @@ void *phys_to_virt(uint64_t phys) {
     return (void *)(uintptr_t)(phys + hhdm_offset);
 }
 
-uint64_t virt_to_phys(const void *virt) {
+uint64_t mm_virt_to_phys_linear(const void *virt) {
     return (uint64_t)(uintptr_t)virt - kernel_virt_base + kernel_phys_base;
 }
+
+uint64_t mm_virt_to_phys_page_table(const void *virt_ptr) {
+    uint64_t virt = (uint64_t)(uintptr_t)virt_ptr;
+    uint64_t *pml4 = (uint64_t *)phys_to_virt(read_cr3() & PTE_ADDR_MASK);
+    uint64_t e4 = pml4[(virt >> 39) & 0x1ffu];
+    if (!(e4 & PTE_PRESENT)) return UINT64_MAX;
+
+    uint64_t *pdpt = (uint64_t *)phys_to_virt(e4 & PTE_ADDR_MASK);
+    uint64_t e3 = pdpt[(virt >> 30) & 0x1ffu];
+    if (!(e3 & PTE_PRESENT)) return UINT64_MAX;
+    if (e3 & PTE_PS)
+        return (e3 & 0x000FFFFFC0000000ull) | (virt & 0x3fffffffull);
+
+    uint64_t *pd = (uint64_t *)phys_to_virt(e3 & PTE_ADDR_MASK);
+    uint64_t e2 = pd[(virt >> 21) & 0x1ffu];
+    if (!(e2 & PTE_PRESENT)) return UINT64_MAX;
+    if (e2 & PTE_PS)
+        return (e2 & 0x000FFFFFFFE00000ull) | (virt & 0x1fffffull);
+
+    uint64_t *pt = (uint64_t *)phys_to_virt(e2 & PTE_ADDR_MASK);
+    uint64_t e1 = pt[(virt >> 12) & 0x1ffu];
+    if (!(e1 & PTE_PRESENT)) return UINT64_MAX;
+    return (e1 & PTE_ADDR_MASK) | (virt & 0xfffull);
+}
+
+uint64_t virt_to_phys(const void *virt) {
+    uint64_t translated = mm_virt_to_phys_page_table(virt);
+    return translated != UINT64_MAX ? translated : mm_virt_to_phys_linear(virt);
+}
+
+uint64_t mm_hhdm_offset(void) { return hhdm_offset; }
+uint64_t mm_kernel_phys_base(void) { return kernel_phys_base; }
+uint64_t mm_kernel_virt_base(void) { return kernel_virt_base; }
 
 // ---------------------------------------------------------------------
 // On-demand page mapping, for physical addresses the bootloader's HHDM
 // doesn't already cover (MMIO windows, mainly). We never unmap/free
 // these -- everything we map here needs to live for the rest of boot.
 // ---------------------------------------------------------------------
-
-#define PTE_PRESENT  (1ull << 0)
-#define PTE_WRITABLE (1ull << 1)
-#define PTE_PCD      (1ull << 4)  // cache disable -- required for MMIO correctness
-#define PTE_ADDR_MASK 0x000FFFFFFFFFF000ull
 
 // Small fixed pool of pages to use as new page-table levels (PDPT/PD/PT)
 // when the existing tables don't reach far enough. Kept as a static
@@ -60,12 +100,6 @@ static void *alloc_table_page(void) {
     uint8_t *page = pt_pool[pt_pool_used++];
     for (int i = 0; i < 4096; i++) page[i] = 0;
     return page;
-}
-
-static inline uint64_t read_cr3(void) {
-    uint64_t v;
-    asm volatile ("mov %%cr3, %0" : "=r"(v));
-    return v;
 }
 
 static inline void invlpg(uint64_t addr) {
